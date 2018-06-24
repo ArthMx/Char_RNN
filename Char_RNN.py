@@ -48,8 +48,8 @@ class Char_RNN():
             model_name = data_file.split('.')[0]
             if not lower_case:
                 model_name = model_name[0].upper() + model_name[1:]
-            model_name += '{}_{}L{}n{}p'.format(self.seq_length, self.n_L, self.n_nodes, 
-                           self.p_dropout) + '.h5'
+            model_name += '{}_{}L{}n'.format(self.seq_length, self.n_L, self.n_nodes) + \
+                            '0' + str(self.p_dropout)[2:] + 'p.h5'
         
         path = './model_saved/'
         
@@ -66,6 +66,7 @@ class Char_RNN():
         
         if os.path.isfile(self.model_file):
             self.load_model() # load existing model
+            self.model.summary() # print details of the model
             self.batch_size = int(self.model.get_input_at(0).shape[0])
             self.seq_length = int(self.model.get_input_at(0).shape[1])
             self.n_char = int(self.model.get_input_at(0).shape[2])
@@ -194,7 +195,7 @@ class Char_RNN():
         
         return model
     
-    def train_model(self, epochs=1, epoch_split=1, batch_size=100, train_ratio=0.95, save_best_val=True):
+    def train_model(self, epochs=1, epoch_split=1, batch_size=100, train_ratio=0.95):
         '''
         Train the model.
         -------------
@@ -205,15 +206,15 @@ class Char_RNN():
                 - epoch_split : int, to split the dataset and make each epoch shorter.
                 - train_ratio : fraction of data used to trained, the remaining
                                 data is used as validation
-                - save_best_val : if True, save model only if improving on validation set
-                                  if False, save model if improving on training set
+                                If = 1, no validation set is made.
         
         '''
         if self.model is None:
             self.batch_size = batch_size
             self.model = self.make_new_model(self.batch_size) 
             self.model.compile('adam', loss='categorical_crossentropy')
-        
+            self.model.summary() # print details of the model
+            
         # change input shape of the model in case a new batch_size is passed
         elif self.batch_size != batch_size:
             # copy the weights of the model to pred_model 
@@ -225,48 +226,57 @@ class Char_RNN():
             self.model.set_weights(model_weights)
             self.model.compile('adam', loss='categorical_crossentropy')
         
-        if self.train_model_call == 0:
+        # Create the training and validation data
+        if self.train_model_call == 0 or train_ratio != self.train_ratio:
             self.make_sequences(train_ratio) # prepare training and validation data
-            
-            self.training_data_generator = self.data_generator(self.x_train, self.y_train)
-            self.val_data_generator = self.data_generator(self.x_val, self.y_val)
-            
-            self.steps_per_epoch = len(self.x_train) // (self.batch_size * epoch_split)
-            self.validation_steps = len(self.x_val) // (self.batch_size)
-            
         self.train_model_call += 1
-            
-        self.model.summary()
+        self.train_ratio = train_ratio
         
-        if save_best_val:
+        # Set training data generator and number of step between each validation evaluation
+        training_data_generator = self.data_generator(self.x_train, self.y_train)
+        steps_per_epoch = (len(self.x_train) / self.batch_size) // epoch_split
+        
+        # Set validation data generator and number of step to go through the whole val set
+        if train_ratio < 1:
+            val_data_generator = self.data_generator(self.x_val, self.y_val)
+            validation_steps = len(self.x_val) // (self.batch_size)
             monitor = 'val_loss'
-        else:
+            
+        # if train_ratio == 1, no validation set is made
+        elif train_ratio == 1:
+            val_data_generator = None
+            validation_steps = None
             monitor = 'loss'
+            
         checkpoint = keras.callbacks.ModelCheckpoint(self.model_file, monitor=monitor, save_best_only=True, verbose=1)
         
-        # Train the model
+        # Train the model with split
         for epoch in range(epochs):
+            print()
+            print('Real Epoch count : {}/{}'.format(epoch+1, epochs))
+            print()
             initial_epoch = (epoch) * epoch_split
             final_epoch = (epoch+1) * epoch_split
-            self.model.reset_states()
-            self.model.fit_generator(self.training_data_generator, steps_per_epoch=self.steps_per_epoch, 
+            self.model.reset_states() # reset the states between each epoch
+            self.model.fit_generator(training_data_generator, steps_per_epoch=steps_per_epoch, 
                                      epochs=final_epoch, initial_epoch=initial_epoch,
-                                     callbacks=[checkpoint], validation_data=self.val_data_generator, 
-                                     validation_steps=self.validation_steps)
- 
+                                     callbacks=[checkpoint], validation_data=val_data_generator, 
+                                     validation_steps=validation_steps)
+            
     def data_generator(self, x, y):
         '''Generate batch of data'''
-        n_batch = len(x)//self.batch_size
-        n_split = self.batch_size//self.seq_length
-        split_len = len(x)//(self.batch_size//self.seq_length)
-        epoch = 1
+        n_batch = len(x)//self.batch_size # number of batch per epoch
+        n_split = self.batch_size//self.seq_length # number of data split to distribute it into each batch
+        split_len = len(x)//(n_split) # number of character separating each split
+        
         while True:
             for i in range(0, n_batch):
-                batch_idx = list(range(i * self.seq_length, (i + 1) * self.seq_length))
-                for split in range(1, n_split):
-                    j = split * split_len
-                    batch_idx += list(range(j + (i * self.seq_length), j + (i + 1) * self.seq_length))
-                    
+                # choose batch index
+                batch_idx = []
+                for j in range(0, n_split):
+                    offset = j * split_len
+                    batch_idx += list(range(offset + (i * self.seq_length), offset + (i + 1) * self.seq_length))
+                
                 yield x[batch_idx], y[batch_idx]
                 
     def sample_random_sentence_seed(self):

@@ -3,7 +3,7 @@ from Char_RNN import Char_RNN
 
 # Load the model
 data_file = 'nietzsche.txt'
-model_name = 'Nietzsche100_2L512n0.5p.h5'
+model_name = 'Nietzsche100_2L512n05p.h5'
 char_rnn = Char_RNN(data_file, model_name=model_name)
 
 
