@@ -124,43 +124,30 @@ class Char_RNN():
             data_encoded[i, self.char_to_idx[char]] = 1
         return data_encoded
         
-    def make_sequences(self, train_ratio):
-        '''
-        Make sequences of character of length "seq_length".
-        ------------------------
-        Input 
-                - train_ratio : ratio of data to be used to train the model,
-                                the rest of the data is used for validation.
-        '''
-        self.data_encoded = self.one_hot_encode_data()
+    def data_generator(self, data):
+        '''Generate batch of data'''
+        n_batch = len(data)//self.batch_size # number of batch per epoch
+        n_split = self.batch_size//self.seq_length # number of data split to distribute it into each batch
+        split_len = len(data)//(n_split) # number of character separating each split
         
-        print()
-        print('Preparing training and validation data...')
-        print()
-        
+        while True:
+            for i in range(0, n_batch):
+                # choose batch index
+                batch_idx = []
+                for j in range(0, n_split):
+                    offset = j * split_len
+                    batch_idx += list(range(offset + (i * self.seq_length), offset + (i + 1) * self.seq_length))
+                
+                yield self.make_batch(batch_idx)
+                
+    def make_batch(self, batch_idx):
         x = []
         y = []
-        for i in range(0, len(self.data) - self.seq_length):
+        for i in batch_idx:
             x.append(self.data_encoded[i:i+self.seq_length])
             y.append(self.data_encoded[i+self.seq_length])
-        x = np.array(x)
-        y = np.array(y)
         
-        m = int(train_ratio * len(x))
-        
-        train_idx = np.arange(m)
-        val_idx = np.arange(m, len(x))
-        
-        self.x_train = x[train_idx]
-        self.y_train = y[train_idx]
-        self.x_val = x[val_idx] 
-        self.y_val = y[val_idx]
-        
-        print('x_train shape :', self.x_train.shape)
-        print('x_val shape :', self.x_val.shape)
-        print('y_train shape :', self.y_train.shape)
-        print('y_val shape :', self.y_val.shape)
-        print()
+        return np.array(x), np.array(y)
     
     def load_model(self):
         '''Load a model already trained'''
@@ -226,20 +213,22 @@ class Char_RNN():
             self.model.set_weights(model_weights)
             self.model.compile('adam', loss='categorical_crossentropy')
         
-        # Create the training and validation data
+        # Encode the data at the first call of train_model
         if self.train_model_call == 0 or train_ratio != self.train_ratio:
-            self.make_sequences(train_ratio) # prepare training and validation data
+            self.data_encoded = self.one_hot_encode_data()
+            self.m = int(train_ratio * len(self.data_encoded))            
+            
         self.train_model_call += 1
         self.train_ratio = train_ratio
         
         # Set training data generator and number of step between each validation evaluation
-        training_data_generator = self.data_generator(self.x_train, self.y_train)
-        steps_per_epoch = (len(self.x_train) / self.batch_size) // epoch_split
+        training_data_generator = self.data_generator(self.data_encoded[:self.m])
+        steps_per_epoch = ((len(self.data_encoded[:self.m]) / self.batch_size) - 1) // epoch_split
         
         # Set validation data generator and number of step to go through the whole val set
         if train_ratio < 1:
-            val_data_generator = self.data_generator(self.x_val, self.y_val)
-            validation_steps = len(self.x_val) // (self.batch_size)
+            val_data_generator = self.data_generator(self.data_encoded[self.m:])
+            validation_steps = len(self.data_encoded[self.m:]) // (self.batch_size)
             monitor = 'val_loss'
             
         # if train_ratio == 1, no validation set is made
@@ -262,22 +251,6 @@ class Char_RNN():
                                      epochs=final_epoch, initial_epoch=initial_epoch,
                                      callbacks=[checkpoint], validation_data=val_data_generator, 
                                      validation_steps=validation_steps)
-            
-    def data_generator(self, x, y):
-        '''Generate batch of data'''
-        n_batch = len(x)//self.batch_size # number of batch per epoch
-        n_split = self.batch_size//self.seq_length # number of data split to distribute it into each batch
-        split_len = len(x)//(n_split) # number of character separating each split
-        
-        while True:
-            for i in range(0, n_batch):
-                # choose batch index
-                batch_idx = []
-                for j in range(0, n_split):
-                    offset = j * split_len
-                    batch_idx += list(range(offset + (i * self.seq_length), offset + (i + 1) * self.seq_length))
-                
-                yield x[batch_idx], y[batch_idx]
                 
     def sample_random_sentence_seed(self):
         '''Return a random sequence which finish by "/n"'''
@@ -333,6 +306,7 @@ class Char_RNN():
             # copy the weights of the model to pred_model 
             model_weights = self.model.get_weights()
             self.pred_model.set_weights(model_weights)
+        self.pred_model.reset_states()
         
         self.temperature = temperature
         # sample a random sequence from the texte in the data file, to use as a seed
@@ -364,4 +338,3 @@ class Char_RNN():
                 with open(output_file, 'w') as f:
                     f.write(generated)
         
-        self.pred_model.reset_states()
