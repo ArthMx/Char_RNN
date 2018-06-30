@@ -223,7 +223,7 @@ class Char_RNN():
         
         # Set training data generator and number of step between each validation evaluation
         training_data_generator = self.data_generator(self.data_encoded[:self.m])
-        steps_per_epoch = ((len(self.data_encoded[:self.m]) / self.batch_size) - 1) // epoch_split
+        steps_per_epoch = (len(self.data_encoded[:self.m]) // self.batch_size) // epoch_split
         
         # Set validation data generator and number of step to go through the whole val set
         if train_ratio < 1:
