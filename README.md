@@ -15,8 +15,8 @@ Once the model is trained, text can be generated using the method **generate_seq
 
 The model has been trained on three different .txt files :
 - **shakespeare.txt** : All the work of Shakespeare, (*https://cs.stanford.edu/people/karpathy/char-rnn/shakespeare_input.txt*).
-- **numpy.txt** : All the .py files from the Numpy repository concatenated (*https://github.com/numpy/numpy*).
 - **all_hugo.txt** : All the poesie of Victor Hugo, (*https://www.poesies.net/hugo.html*).
+- **numpy.txt** : All the .py files from the Numpy repository concatenated (*https://github.com/numpy/numpy*).
 
 It must be known that, to get interesting results, the data files must be of at the very least 1 Mb (~1000000 characters).
 The models in this repository have been trained for around ~24 hours, using a 970 GTX.
